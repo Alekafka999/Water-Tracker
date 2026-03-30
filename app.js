@@ -7,18 +7,21 @@ const TOTAL = 15, ML = 200, GOAL = 3000;
 
   const dateBadgeEl = document.getElementById('date-badge');
   const grid = document.getElementById('cups-grid');
-  const ringEl = document.getElementById('ring');
-  const ringMlEl = document.getElementById('ring-ml');
-  const ringPctEl = document.getElementById('ring-pct');
-  const cupsEl = document.getElementById('s-cups');
-  const litersEl = document.getElementById('s-liters');
-  const remainingEl = document.getElementById('s-rem');
-  const motivEl = document.getElementById('motiv');
-  const congratsEl = document.getElementById('congrats');
-  const historyListEl = document.getElementById('history-list');
-  const btnAdd = document.getElementById('btn-add');
-  const btnUndo = document.getElementById('btn-undo');
-  const btnReset = document.getElementById('btn-reset');
+const ringEl = document.getElementById('ring');
+const ringMlEl = document.getElementById('ring-ml');
+const ringPctEl = document.getElementById('ring-pct');
+const progressEl = document.getElementById('hydration-progress');
+const cupsEl = document.getElementById('s-cups');
+const litersEl = document.getElementById('s-liters');
+const remainingEl = document.getElementById('s-rem');
+const motivEl = document.getElementById('motiv');
+const congratsEl = document.getElementById('congrats');
+const historyListEl = document.getElementById('history-list');
+const statusEl = document.getElementById('sr-status');
+const btnAdd = document.getElementById('btn-add');
+const btnUndo = document.getElementById('btn-undo');
+const btnReset = document.getElementById('btn-reset');
+let lastStatusMessage = '';
 
   // ── Storage helpers ──
   function getTodayKey(date = new Date()) {
@@ -160,28 +163,49 @@ const TOTAL = 15, ML = 200, GOAL = 3000;
     '🎉 Meta batida! Você é hidratado(a)!'
   ];
 
-  function getMotiv(cups) {
-    if (cups === TOTAL) return motivMessages[motivMessages.length - 1];
-    const stepCount = motivMessages.length - 1;
-    const index = Math.min(Math.floor(cups / (TOTAL / stepCount)), stepCount - 1);
-    return motivMessages[index];
+function getMotiv(cups) {
+  if (cups === TOTAL) return motivMessages[motivMessages.length - 1];
+  const stepCount = motivMessages.length - 1;
+  const index = Math.min(Math.floor(cups / (TOTAL / stepCount)), stepCount - 1);
+  return motivMessages[index];
+}
+
+function buildStatusMessage(ml, pct) {
+  if (filled === TOTAL) {
+    return `Meta batida com ${ml.toLocaleString('pt-BR')} mililitros, equivalente a ${TOTAL} copos.`;
   }
 
-  function update() {
-    filled = clampFilled(filled);
+  return `Progresso atualizado: ${filled} de ${TOTAL} copos, ${ml.toLocaleString('pt-BR')} mililitros, ${pct}% da meta diária.`;
+}
 
-    const ml = filled * ML;
-    const pct = Math.round(ml / GOAL * 100);
-    const liters = (ml / 1000).toFixed(1).replace('.', ',');
+function announceStatus(message) {
+  if (!statusEl || message === lastStatusMessage) return;
 
-    // Ring
-    const offset = CIRCUMFERENCE - (CIRCUMFERENCE * Math.min(pct, 100) / 100);
-    ringEl.style.strokeDashoffset = offset;
-    ringMlEl.textContent = ml.toLocaleString('pt-BR') + ' ml';
-    ringPctEl.textContent = Math.min(pct, 100) + '%';
+  lastStatusMessage = message;
+  statusEl.textContent = '';
+  window.setTimeout(() => {
+    statusEl.textContent = message;
+  }, 0);
+}
 
-    // Stats
-    cupsEl.textContent = filled;
+function update(shouldAnnounce = true) {
+  filled = clampFilled(filled);
+
+  const ml = filled * ML;
+  const pct = Math.round(ml / GOAL * 100);
+  const clampedPct = Math.min(pct, 100);
+  const liters = (ml / 1000).toFixed(1).replace('.', ',');
+
+  // Ring
+  const offset = CIRCUMFERENCE - (CIRCUMFERENCE * clampedPct / 100);
+  ringEl.style.strokeDashoffset = offset;
+  ringMlEl.textContent = ml.toLocaleString('pt-BR') + ' ml';
+  ringPctEl.textContent = clampedPct + '%';
+  progressEl.setAttribute('aria-valuenow', String(ml));
+  progressEl.setAttribute('aria-valuetext', `${ml.toLocaleString('pt-BR')} de ${GOAL.toLocaleString('pt-BR')} mililitros (${clampedPct}%)`);
+
+  // Stats
+  cupsEl.textContent = filled;
     litersEl.textContent = liters + ' L';
     remainingEl.textContent = TOTAL - filled;
 
@@ -197,11 +221,15 @@ const TOTAL = 15, ML = 200, GOAL = 3000;
     }
 
     btnAdd.disabled = filled >= TOTAL;
-    btnUndo.disabled = filled === 0;
-    btnReset.disabled = filled === 0;
+  btnUndo.disabled = filled === 0;
+  btnReset.disabled = filled === 0;
 
-    renderHistory();
+  if (shouldAnnounce) {
+    announceStatus(buildStatusMessage(ml, clampedPct));
   }
+
+  renderHistory();
+}
 
   // ── Buttons ──
   btnAdd.addEventListener('click', () => {
@@ -232,33 +260,33 @@ const TOTAL = 15, ML = 200, GOAL = 3000;
       .sort((a, b) => b[0].localeCompare(a[0]))
       .slice(0, 6);
 
-    if (entries.length === 0) {
-      historyListEl.innerHTML = '<div class="history-empty">Nenhum registro anterior ainda.</div>';
-      return;
-    }
+  if (entries.length === 0) {
+    historyListEl.innerHTML = '<li class="history-empty">Nenhum registro anterior ainda.</li>';
+    return;
+  }
 
-    historyListEl.innerHTML = entries.map(([date, cups]) => {
+  historyListEl.innerHTML = entries.map(([date, cups]) => {
       const safeCups = clampFilled(Number(cups));
       const ml = safeCups * ML;
       const pct = Math.min(Math.round(ml / GOAL * 100), 100);
       const [y, m, d] = date.split('-');
-      const label = d + '/' + m + '/' + y;
-      return `
-        <div class="history-item">
-          <span class="history-date">${label}</span>
-          <div class="history-bar-wrap">
-            <div class="history-bar" style="width:${pct}%"></div>
-          </div>
-          <span class="history-val">${(ml/1000).toFixed(1).replace('.',',')} L</span>
+    const label = d + '/' + m + '/' + y;
+    return `
+      <li class="history-item">
+        <span class="history-date">${label}</span>
+        <div class="history-bar-wrap">
+          <div class="history-bar" style="width:${pct}%"></div>
         </div>
-      `;
-    }).join('');
-  }
+        <span class="history-val">${(ml/1000).toFixed(1).replace('.',',')} L</span>
+      </li>
+    `;
+  }).join('');
+}
 
   // ── Ring circumference setup ──
   ringEl.style.strokeDasharray = CIRCUMFERENCE;
   ringEl.style.strokeDashoffset = CIRCUMFERENCE;
 
-  // ── Init ──
-  filled = loadState();
-  update();
+// ── Init ──
+filled = loadState();
+update(false);

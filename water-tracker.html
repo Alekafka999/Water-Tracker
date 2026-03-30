@@ -9,19 +9,23 @@
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<a class="skip-link" href="#main-content">Pular para o conteúdo principal</a>
 
-<div class="page">
+<main class="page" id="main-content">
   <header>
-    <div class="logo">hydro<span>.</span></div>
-    <div class="tagline">Controle de hidratação diária</div>
+    <h1 class="logo">hydro<span>.</span></h1>
+    <p class="tagline">Controle de hidratação diária</p>
     <div class="date-badge" id="date-badge">—</div>
   </header>
 
-  <div class="card">
+  <section class="card" aria-labelledby="tracker-title">
+    <h2 class="sr-only" id="tracker-title">Seu progresso de hidratação de hoje</h2>
+    <p class="sr-only" id="tracker-help">Cada copo representa 200 mililitros. Use os botões para marcar, desfazer ou zerar o consumo do dia.</p>
+    <p class="sr-only" id="sr-status" aria-live="polite" aria-atomic="true"></p>
 
     <!-- Ring progress -->
-    <div class="ring-wrap">
-      <svg class="ring-svg" viewBox="0 0 140 140">
+    <div class="ring-wrap" id="hydration-progress" role="progressbar" aria-labelledby="tracker-title ring-ml" aria-describedby="tracker-help" aria-valuemin="0" aria-valuemax="3000" aria-valuenow="0" aria-valuetext="0 de 3.000 mililitros">
+      <svg class="ring-svg" viewBox="0 0 140 140" aria-hidden="true" focusable="false">
         <defs>
           <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stop-color="#85B7EB"/>
@@ -39,8 +43,8 @@
     </div>
 
     <!-- Cups -->
-    <div class="cups-section-label">Clique para marcar cada copo (200 ml)</div>
-    <div class="cups-grid" id="cups-grid"></div>
+    <p class="cups-section-label">Clique para marcar cada copo (200 ml)</p>
+    <div class="cups-grid" id="cups-grid" role="group" aria-labelledby="tracker-title" aria-describedby="tracker-help"></div>
 
     <!-- Stats -->
     <div class="stats">
@@ -69,18 +73,20 @@
     </div>
 
     <div class="congrats" id="congrats">🎉 Meta batida! Você bebeu 3 litros hoje. Incrível!</div>
-  </div>
+  </section>
 
   <!-- History -->
-  <div class="history-card">
-    <div class="history-title">📅 Histórico dos últimos dias</div>
-    <div class="history-list" id="history-list">
-      <div class="history-empty">Nenhum registro ainda.</div>
-    </div>
-  </div>
+  <section class="history-card" aria-labelledby="history-title">
+    <h2 class="history-title" id="history-title">📅 Histórico dos últimos dias</h2>
+    <ul class="history-list" id="history-list">
+      <li class="history-empty">Nenhum registro ainda.</li>
+    </ul>
+  </section>
+</main>
 
-  <footer>Feito com 💙 para te manter hidratado</footer>
-</div>
+<footer>
+  <p>Feito com 💙 para te manter hidratado</p>
+</footer>
 
 <script src="app.js"></script>
 </body>
