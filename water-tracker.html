@@ -353,6 +353,25 @@
 
     .btn:active { transform: scale(0.96); }
 
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn:disabled:hover {
+      background: var(--blue-50);
+      border-color: var(--blue-100);
+      color: var(--blue-600);
+    }
+
+    .btn-add:disabled,
+    .btn-add:disabled:hover {
+      background: var(--blue-400);
+      border-color: var(--blue-400);
+      color: #fff;
+    }
+
     .btn-add {
       background: var(--blue-400);
       border-color: var(--blue-400);
@@ -542,9 +561,9 @@
 
     <!-- Actions -->
     <div class="actions">
-      <button class="btn" id="btn-undo">↩ Desfazer</button>
-      <button class="btn btn-add" id="btn-add">+ Adicionar copo</button>
-      <button class="btn" id="btn-reset">Zerar</button>
+      <button class="btn" id="btn-undo" type="button">↩ Desfazer</button>
+      <button class="btn btn-add" id="btn-add" type="button">+ Adicionar copo</button>
+      <button class="btn" id="btn-reset" type="button">Zerar</button>
     </div>
 
     <div class="congrats" id="congrats">🎉 Meta batida! Você bebeu 3 litros hoje. Incrível!</div>
@@ -566,44 +585,95 @@
   const CIRCUMFERENCE = 2 * Math.PI * 65; // ~408.4
 
   let filled = 0;
-  const TODAY = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const TODAY = getTodayKey(now);
+
+  const dateBadgeEl = document.getElementById('date-badge');
+  const grid = document.getElementById('cups-grid');
+  const ringEl = document.getElementById('ring');
+  const ringMlEl = document.getElementById('ring-ml');
+  const ringPctEl = document.getElementById('ring-pct');
+  const cupsEl = document.getElementById('s-cups');
+  const litersEl = document.getElementById('s-liters');
+  const remainingEl = document.getElementById('s-rem');
+  const motivEl = document.getElementById('motiv');
+  const congratsEl = document.getElementById('congrats');
+  const historyListEl = document.getElementById('history-list');
+  const btnAdd = document.getElementById('btn-add');
+  const btnUndo = document.getElementById('btn-undo');
+  const btnReset = document.getElementById('btn-reset');
 
   // ── Storage helpers ──
+  function getTodayKey(date = new Date()) {
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return localDate.toISOString().slice(0, 10);
+  }
+
+  function clampFilled(value) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(Math.max(Math.trunc(value), 0), TOTAL);
+  }
+
+  function readStorage(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStorage(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function loadState() {
-    const raw = localStorage.getItem('hydro_' + TODAY);
-    return raw ? parseInt(raw) : 0;
+    const raw = readStorage('hydro_' + TODAY);
+    return clampFilled(Number.parseInt(raw, 10));
   }
 
   function saveState(n) {
-    localStorage.setItem('hydro_' + TODAY, n);
-    saveHistory(n);
+    const safeFilled = clampFilled(n);
+    writeStorage('hydro_' + TODAY, String(safeFilled));
+    saveHistory(safeFilled);
   }
 
   function saveHistory(n) {
     const hist = getHistory();
-    hist[TODAY] = n;
-    localStorage.setItem('hydro_history', JSON.stringify(hist));
+    hist[TODAY] = clampFilled(n);
+    writeStorage('hydro_history', JSON.stringify(hist));
   }
 
   function getHistory() {
-    const raw = localStorage.getItem('hydro_history');
-    return raw ? JSON.parse(raw) : {};
+    const raw = readStorage('hydro_history');
+
+    if (!raw) return {};
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 
   // ── Date badge ──
   const days = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const now = new Date();
-  document.getElementById('date-badge').textContent =
-    days[now.getDay()] + ', ' + now.getDate() + ' de ' + months[now.getMonth()];
+  dateBadgeEl.textContent = days[now.getDay()] + ', ' + now.getDate() + ' de ' + months[now.getMonth()];
 
   // ── Build cups ──
-  const grid = document.getElementById('cups-grid');
   const cupEls = [];
 
   for (let i = 0; i < TOTAL; i++) {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'cup-btn';
+    btn.setAttribute('aria-pressed', 'false');
     btn.setAttribute('aria-label', `Copo ${i+1} — ${(i+1)*ML} ml`);
     btn.innerHTML = `
       <div class="cup-inner">
@@ -612,12 +682,21 @@
       </div>
       <div class="cup-num">${(i+1)*ML >= 1000 ? ((i+1)*ML/1000).toFixed(1)+'L' : (i+1)*ML+'ml'}</div>
     `;
-    btn.addEventListener('click', () => handleCupClick(i, btn));
+    btn.addEventListener('click', () => handleCupClick(i));
     grid.appendChild(btn);
     cupEls.push(btn);
   }
 
-  function handleCupClick(idx, btn) {
+  function handleCupState(idx, isFilled) {
+    const cupEl = cupEls[idx];
+
+    if (!cupEl) return;
+
+    cupEl.classList.toggle('filled', isFilled);
+    cupEl.setAttribute('aria-pressed', String(isFilled));
+  }
+
+  function handleCupClick(idx) {
     if (idx === filled) {
       fill(idx);
     } else if (idx < filled) {
@@ -633,18 +712,20 @@
   }
 
   function fill(idx) {
-    cupEls[idx].classList.add('filled');
+    if (idx < 0 || idx >= TOTAL) return;
+
     // ripple
     const rip = document.createElement('div');
     rip.className = 'ripple';
     cupEls[idx].querySelector('.cup-inner').appendChild(rip);
     setTimeout(() => rip.remove(), 600);
     filled = idx + 1;
+    handleCupState(idx, true);
     saveState(filled);
   }
 
   function unfill(idx) {
-    cupEls[idx].classList.remove('filled');
+    handleCupState(idx, false);
   }
 
   // ── Update UI ──
@@ -663,48 +744,54 @@
   ];
 
   function getMotiv(cups) {
-    const idx = Math.min(Math.floor(cups / 1.5), motivMessages.length - 1);
     if (cups === TOTAL) return motivMessages[motivMessages.length - 1];
-    return motivMessages[Math.floor(cups / (TOTAL / (motivMessages.length - 1)))];
+    const stepCount = motivMessages.length - 1;
+    const index = Math.min(Math.floor(cups / (TOTAL / stepCount)), stepCount - 1);
+    return motivMessages[index];
   }
 
   function update() {
+    filled = clampFilled(filled);
+
     const ml = filled * ML;
     const pct = Math.round(ml / GOAL * 100);
     const liters = (ml / 1000).toFixed(1).replace('.', ',');
 
     // Ring
     const offset = CIRCUMFERENCE - (CIRCUMFERENCE * Math.min(pct, 100) / 100);
-    document.getElementById('ring').style.strokeDashoffset = offset;
-    document.getElementById('ring-ml').textContent = ml.toLocaleString('pt-BR') + ' ml';
-    document.getElementById('ring-pct').textContent = Math.min(pct, 100) + '%';
+    ringEl.style.strokeDashoffset = offset;
+    ringMlEl.textContent = ml.toLocaleString('pt-BR') + ' ml';
+    ringPctEl.textContent = Math.min(pct, 100) + '%';
 
     // Stats
-    document.getElementById('s-cups').textContent = filled;
-    document.getElementById('s-liters').textContent = liters + ' L';
-    document.getElementById('s-rem').textContent = TOTAL - filled;
+    cupsEl.textContent = filled;
+    litersEl.textContent = liters + ' L';
+    remainingEl.textContent = TOTAL - filled;
 
     // Motivational
-    document.getElementById('motiv').textContent = getMotiv(filled);
+    motivEl.textContent = getMotiv(filled);
 
     // Congrats
-    document.getElementById('congrats').classList.toggle('show', filled === TOTAL);
+    congratsEl.classList.toggle('show', filled === TOTAL);
 
     // Cups visual
     for (let i = 0; i < TOTAL; i++) {
-      if (i < filled) cupEls[i].classList.add('filled');
-      else cupEls[i].classList.remove('filled');
+      handleCupState(i, i < filled);
     }
+
+    btnAdd.disabled = filled >= TOTAL;
+    btnUndo.disabled = filled === 0;
+    btnReset.disabled = filled === 0;
 
     renderHistory();
   }
 
   // ── Buttons ──
-  document.getElementById('btn-add').addEventListener('click', () => {
+  btnAdd.addEventListener('click', () => {
     if (filled < TOTAL) { fill(filled); update(); }
   });
 
-  document.getElementById('btn-undo').addEventListener('click', () => {
+  btnUndo.addEventListener('click', () => {
     if (filled > 0) {
       filled--;
       unfill(filled);
@@ -713,7 +800,7 @@
     }
   });
 
-  document.getElementById('btn-reset').addEventListener('click', () => {
+  btnReset.addEventListener('click', () => {
     if (!confirm('Zerar o progresso de hoje?')) return;
     filled = 0;
     saveState(0);
@@ -723,19 +810,19 @@
   // ── History ──
   function renderHistory() {
     const hist = getHistory();
-    const list = document.getElementById('history-list');
     const entries = Object.entries(hist)
-      .filter(([d]) => d !== TODAY)
+      .filter(([date]) => date !== TODAY && /^\d{4}-\d{2}-\d{2}$/.test(date))
       .sort((a, b) => b[0].localeCompare(a[0]))
       .slice(0, 6);
 
     if (entries.length === 0) {
-      list.innerHTML = '<div class="history-empty">Nenhum registro anterior ainda.</div>';
+      historyListEl.innerHTML = '<div class="history-empty">Nenhum registro anterior ainda.</div>';
       return;
     }
 
-    list.innerHTML = entries.map(([date, cups]) => {
-      const ml = cups * ML;
+    historyListEl.innerHTML = entries.map(([date, cups]) => {
+      const safeCups = clampFilled(Number(cups));
+      const ml = safeCups * ML;
       const pct = Math.min(Math.round(ml / GOAL * 100), 100);
       const [y, m, d] = date.split('-');
       const label = d + '/' + m + '/' + y;
@@ -752,8 +839,8 @@
   }
 
   // ── Ring circumference setup ──
-  document.getElementById('ring').style.strokeDasharray = CIRCUMFERENCE;
-  document.getElementById('ring').style.strokeDashoffset = CIRCUMFERENCE;
+  ringEl.style.strokeDasharray = CIRCUMFERENCE;
+  ringEl.style.strokeDashoffset = CIRCUMFERENCE;
 
   // ── Init ──
   filled = loadState();
