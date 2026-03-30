@@ -5,6 +5,7 @@ const CIRCUMFERENCE = 2 * Math.PI * 65;
 const STORAGE_KEY = 'hydro_state_v2';
 const LEGACY_HISTORY_KEY = 'hydro_history';
 const LEGACY_DAY_PREFIX = 'hydro_';
+const STORAGE_COOKIE_TTL = 60 * 60 * 24 * 365;
 
 let todayKey = getTodayKey();
 let filled = 0;
@@ -58,6 +59,37 @@ function readStorage(key) {
 function writeStorage(key, value) {
   try {
     localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readCookie(key) {
+  try {
+    const prefix = key + '=';
+    const cookie = document.cookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(prefix));
+
+    if (!cookie) return null;
+
+    return decodeURIComponent(cookie.slice(prefix.length));
+  } catch {
+    return null;
+  }
+}
+
+function writeCookie(key, value) {
+  try {
+    document.cookie = [
+      `${key}=${encodeURIComponent(value)}`,
+      `max-age=${STORAGE_COOKIE_TTL}`,
+      'path=/',
+      'SameSite=Lax'
+    ].join('; ');
+
     return true;
   } catch {
     return false;
@@ -143,17 +175,27 @@ function normalizeState(rawState) {
 }
 
 function loadState() {
-  const raw = readStorage(STORAGE_KEY);
+  const rawLocalState = readStorage(STORAGE_KEY);
 
-  if (!raw) {
-    return loadLegacyState();
+  if (rawLocalState) {
+    try {
+      return normalizeState(JSON.parse(rawLocalState));
+    } catch {
+      // Falls back to the cookie copy when localStorage is unavailable or corrupted.
+    }
   }
 
-  try {
-    return normalizeState(JSON.parse(raw));
-  } catch {
-    return loadLegacyState();
+  const rawCookieState = readCookie(STORAGE_KEY);
+
+  if (rawCookieState) {
+    try {
+      return normalizeState(JSON.parse(rawCookieState));
+    } catch {
+      return loadLegacyState();
+    }
   }
+
+  return loadLegacyState();
 }
 
 const state = loadState();
@@ -165,7 +207,9 @@ function persistState() {
   state.currentFilled = clampFilled(filled);
   state.history = sanitizeHistory(state.history);
   state.history[todayKey] = state.currentFilled;
-  writeStorage(STORAGE_KEY, JSON.stringify(state));
+  const serializedState = JSON.stringify(state);
+  writeStorage(STORAGE_KEY, serializedState);
+  writeCookie(STORAGE_KEY, serializedState);
 }
 
 function saveState(nextFilled) {
